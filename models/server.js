@@ -1,41 +1,94 @@
-const express = require('express')
+const express = require('express');
 const cors = require('cors');
-const { json, urlencoded } = require('body-parser'); // Sirve para enviar los correos desde un host remoto.
-const sendMail = require('../routes/email.route');
+const helmet = require('helmet');
+const pinoHttp = require('pino-http');
+const logger = require('../config/logger');
+const { getCorsOptions, getRoutes } = require('../config/env');
+const infoRoutes = require('../routes/info.route');
+const emailRoutes = require('../routes/email.route');
+const healthRoutes = require('../routes/health.route');
+const { notFoundHandler, errorHandler } = require('../middlewares/error.middleware');
 
 class Server {
-    constructor() {
-        this.app = express();
-        this.port = process.env.API_PORT || 8000;
-        this.route = '/' + process.env.API_ROUTE;
+  constructor() {
+    this.app = express();
+    this.port = Number(process.env.API_PORT) || 8000;
+    this.routesConfig = getRoutes();
+    this.httpServer = null;
 
-        // Middlewares
-        this.middlewares();
-
-        // Rutas
-        this.routes();
+    if (process.env.TRUST_PROXY === 'true') {
+      this.app.set('trust proxy', 1);
     }
 
-    middlewares() {
-        // Cors
-        this.app.use(cors());
+    this.middlewares();
+    this.routes();
+    this.errorHandlers();
+  }
 
-        // Lectura y parseo del body
-        this.app.use(json());
-        this.app.use(urlencoded({ extended: false }));
+  middlewares() {
+    this.app.use(helmet());
+    this.app.use(cors(getCorsOptions()));
+    this.app.use(
+      pinoHttp({
+        logger,
+        autoLogging: {
+          ignore: (req) => req.url.endsWith('/health'),
+        },
+      })
+    );
+    this.app.use(express.json({ limit: process.env.BODY_LIMIT || '100kb' }));
+    this.app.use(express.urlencoded({ extended: false, limit: process.env.BODY_LIMIT || '100kb' }));
+  }
 
-        // Directorio público
-        this.app.use(express.static('public'));
-    }
+  routes() {
+    const { healthPath, sendmailPath, rootPath } = this.routesConfig;
 
-    routes() {
-        this.app.use(this.route, sendMail);
-    }
+    this.app.use(rootPath, infoRoutes);
+    this.app.use(healthPath, healthRoutes);
+    this.app.use(sendmailPath, emailRoutes);
+  }
 
-    listen() {
-        this.app.listen(this.port, () => {
-            console.log('Server on port: ', this.port)
-        });
-    }
+  errorHandlers() {
+    this.app.use(notFoundHandler);
+    this.app.use(errorHandler);
+  }
+
+  listen() {
+    return new Promise((resolve) => {
+      this.httpServer = this.app.listen(this.port, () => {
+        const { healthPath, sendmailPath } = this.routesConfig;
+
+        logger.info(
+          {
+            port: this.port,
+            healthPath,
+            sendmailPath,
+          },
+          'Server started'
+        );
+        resolve();
+      });
+    });
+  }
+
+  close() {
+    return new Promise((resolve, reject) => {
+      if (!this.httpServer) {
+        resolve();
+        return;
+      }
+
+      this.httpServer.close((err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        logger.info('HTTP server closed');
+        resolve();
+      });
+    });
+  }
 }
+
 module.exports = Server;

@@ -1,0 +1,16 @@
+# Plantilla cPanel / Passenger — app en subdirectorio /api
+#
+# cPanel regenera el bloque Passenger al guardar la app en Setup Node.js App.
+# Application URL: htg.com.pe/api  →  PassengerBaseURI "/api"
+# Variables de entorno: usar .env, no SetEnv aquí.
+#
+# Con PassengerBaseURI=/api, Express recibe rutas SIN el prefijo /api.
+# Dejar API_BASE_PATH vacío en .env (sendmail → /sendmail internamente).
+
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/USUARIO/public_html/api"
+PassengerBaseURI "/api"
+PassengerNodejs "/home/USUARIO/nodevenv/public_html/api/24/bin/node"
+PassengerAppType node
+PassengerStartupFile app.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END

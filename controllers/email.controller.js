@@ -1,34 +1,27 @@
-const { response, request } = require('express');
-const { createTransport } = require('nodemailer');
+const logger = require('../config/logger');
+const { logError } = logger;
+const { sendEmail } = require('../services/email.service');
 
-const sendMail = async (req = request, res = response) => {
-  const data = req.body;
-
-  const config = {
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_SECURE,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD
-    }
-  };
-
-  const message = {
-    from: `${data.from}`,
-    to: `${data.to}`,
-    bcc: `${data.bcc}`,
-    subject: `${data.subject}`,
-    html: `${data.html}`
-  };
+const sendMail = async (req, res) => {
+  const { to, subject, html, bcc, cc } = req.body;
 
   try {
-    const transport = createTransport(config);
-    const info = await transport.sendMail(message);
-    console.log("Message sent: %s", info.messageId);
-  } catch (error) {
-    console.log(error);
-  }
+    const info = await sendEmail({ to, subject, html, bcc, cc });
 
-}
+    logger.info({ messageId: info.messageId }, 'Email sent');
+
+    return res.status(200).json({
+      ok: true,
+      messageId: info.messageId,
+    });
+  } catch (error) {
+    logError(error, 'Failed to send email');
+
+    return res.status(502).json({
+      ok: false,
+      error: 'Could not send email',
+    });
+  }
+};
+
 module.exports = sendMail;
